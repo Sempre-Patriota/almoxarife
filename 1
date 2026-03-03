@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AxisPartnersControl - Almoxarifado</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gray: { 900: '#111827', 800: '#1f2937', 700: '#374151' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen">
+
+    <nav class="bg-gray-800 p-4 shadow-md flex justify-between items-center">
+        <h1 class="text-xl font-bold text-blue-400">AxisPartnersControl <span class="text-sm text-gray-400 font-normal">| Almoxarifado</span></h1>
+        <button onclick="toggleAdmin()" class="text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">Acesso Admin</button>
+    </nav>
+
+    <div class="container mx-auto p-6 max-w-4xl">
+
+        <div id="colab-panel" class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6">
+            <h2 class="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Atualizar Inventário</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Código do Produto</label>
+                    <input type="text" id="mov-code" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:outline-none focus:border-blue-500" placeholder="Ex: PAR-001">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Quantidade</label>
+                    <input type="number" id="mov-qty" min="1" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:outline-none focus:border-blue-500" placeholder="Ex: 10">
+                </div>
+                <div class="flex items-end gap-2">
+                    <button onclick="registerMovement('entrada')" class="w-full bg-green-600 hover:bg-green-500 text-white font-semibold py-2 rounded transition">Entrada (+)</button>
+                    <button onclick="registerMovement('saida')" class="w-full bg-red-600 hover:bg-red-500 text-white font-semibold py-2 rounded transition">Saída (-)</button>
+                </div>
+            </div>
+            <p id="mov-msg" class="text-sm text-green-400 hidden"></p>
+        </div>
+
+        <div id="admin-panel" class="hidden">
+            
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6 border-t-4 border-blue-500">
+                <h2 class="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Cadastrar Novo Item</h2>
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                    <div class="col-span-2">
+                        <label class="block text-sm text-gray-400 mb-1">Nome do Item</label>
+                        <input type="text" id="item-name" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Código</label>
+                        <input type="text" id="item-code" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Tipo/Unid</label>
+                        <select id="item-type" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:outline-none focus:border-blue-500">
+                            <option value="unid">Unidade</option>
+                            <option value="kg">Kg</option>
+                            <option value="metros">Metros</option>
+                            <option value="caixa">Caixa</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Valor Unit. (R$)</label>
+                        <input type="number" id="item-price" step="0.01" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <button onclick="cadastrarItem()" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-6 rounded transition">Cadastrar no Sistema</button>
+            </div>
+
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6">
+                <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                    <h2 class="text-2xl font-semibold">Posição de Estoque</h2>
+                    <button onclick="exportCSV()" class="bg-gray-700 hover:bg-gray-600 text-sm py-1 px-3 rounded transition flex items-center gap-2">
+                        ⬇️ Exportar Movimentações (CSV)
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead>
+                            <tr class="bg-gray-700 text-gray-300">
+                                <th class="p-3 rounded-tl-lg">Código</th>
+                                <th class="p-3">Nome</th>
+                                <th class="p-3">Tipo</th>
+                                <th class="p-3">Valor (R$)</th>
+                                <th class="p-3 rounded-tr-lg">Qtd. Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="estoque-body" class="divide-y divide-gray-700">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Inicializa o banco de dados local
+        let db = JSON.parse(localStorage.getItem('axis_estoque')) || { itens: [], movimentacoes: [] };
+        let isAdmin = false;
+
+        function saveDB() {
+            localStorage.setItem('axis_estoque', JSON.stringify(db));
+            renderTable();
+        }
+
+        // --- FUNÇÕES DO ADMIN ---
+        function toggleAdmin() {
+            if (!isAdmin) {
+                const pass = prompt("Digite a senha do Admin:");
+                if (pass === "1234") {
+                    isAdmin = true;
+                    document.getElementById('admin-panel').classList.remove('hidden');
+                    renderTable();
+                } else {
+                    alert("Senha incorreta!");
+                }
+            } else {
+                isAdmin = false;
+                document.getElementById('admin-panel').classList.add('hidden');
+            }
+        }
+
+        function cadastrarItem() {
+            const nome = document.getElementById('item-name').value;
+            const codigo = document.getElementById('item-code').value.toUpperCase();
+            const tipo = document.getElementById('item-type').value;
+            const preco = parseFloat(document.getElementById('item-price').value || 0);
+
+            if(!nome || !codigo) return alert("Preencha o Nome e o Código!");
+            if(db.itens.find(i => i.codigo === codigo)) return alert("Este código já existe!");
+
+            db.itens.push({ codigo, nome, tipo, preco, quantidade: 0 });
+            saveDB();
+            
+            // Limpa campos
+            document.getElementById('item-name').value = '';
+            document.getElementById('item-code').value = '';
+            document.getElementById('item-price').value = '';
+            alert("Item cadastrado com sucesso!");
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('estoque-body');
+            tbody.innerHTML = '';
+            db.itens.forEach(item => {
+                tbody.innerHTML += `
+                    <tr class="hover:bg-gray-700/50 transition">
+                        <td class="p-3 font-mono text-blue-400">${item.codigo}</td>
+                        <td class="p-3">${item.nome}</td>
+                        <td class="p-3 text-gray-400">${item.tipo}</td>
+                        <td class="p-3 text-gray-400">R$ ${item.preco.toFixed(2)}</td>
+                        <td class="p-3 font-bold ${item.quantidade < 0 ? 'text-red-400' : 'text-green-400'}">${item.quantidade}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function exportCSV() {
+            if (db.movimentacoes.length === 0) return alert("Nenhuma movimentação registrada.");
+            
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Data/Hora,Codigo,Tipo,Quantidade\n";
+            
+            db.movimentacoes.forEach(mov => {
+                let row = `${mov.data},${mov.codigo},${mov.tipo},${mov.quantidade}`;
+                csvContent += row + "\r\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `movimentacoes_almoxarifado_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // --- FUNÇÕES DO COLABORADOR ---
+        function registerMovement(tipo) {
+            const codigo = document.getElementById('mov-code').value.toUpperCase();
+            const qtd = parseInt(document.getElementById('mov-qty').value);
+
+            if(!codigo || isNaN(qtd) || qtd <= 0) return alert("Informe um código válido e uma quantidade maior que zero.");
+
+            const itemIndex = db.itens.findIndex(i => i.codigo === codigo);
+            if(itemIndex === -1) return alert("Código de produto não encontrado no sistema. Peça ao Admin para cadastrar.");
+
+            // Atualiza total
+            if(tipo === 'entrada') {
+                db.itens[itemIndex].quantidade += qtd;
+            } else {
+                db.itens[itemIndex].quantidade -= qtd;
+            }
+
+            // Registra o log da movimentação com Data e Hora
+            const agora = new Date();
+            db.movimentacoes.push({
+                data: agora.toLocaleString('pt-BR'),
+                codigo: codigo,
+                tipo: tipo,
+                quantidade: qtd
+            });
+
+            saveDB();
+
+            // Feedback visual
+            document.getElementById('mov-code').value = '';
+            document.getElementById('mov-qty').value = '';
+            const msg = document.getElementById('mov-msg');
+            msg.textContent = `✅ ${tipo.toUpperCase()} de ${qtd} unidades do item ${codigo} registrada com sucesso!`;
+            msg.classList.remove('hidden');
+            setTimeout(() => msg.classList.add('hidden'), 4000);
+        }
+
+        // Renderiza tabela inicial se for admin
+        renderTable();
+    </script>
+</body>
+</html>
